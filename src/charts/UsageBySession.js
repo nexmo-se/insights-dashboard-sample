@@ -24,7 +24,7 @@ const sessionSummariesQuery = endCursor => gql`
     project(projectId: ${apiKey}) {
       sessionData {
         sessionSummaries(
-          start: ${moment().subtract(10, 'days')}
+          start: ${moment().subtract(1, 'years')}
           endCursor: "${endCursor}"
         ) {
           totalCount
@@ -49,10 +49,11 @@ const sessionQuery = sessionIds => gql`
           resources {
             sessionId
             publisherMinutes
-            subscriberMinutes
+			subscriberMinutes
             meetings {
               totalCount
-            }
+			}
+			
           }
         }
       }
@@ -61,92 +62,96 @@ const sessionQuery = sessionIds => gql`
 `;
 
 class UsageBySession extends Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      sessionsInfo: [],
-      loading: true,
-      loadingMore: false,
-      endCursor: '',
-      totalCount: 0,
-    }
-  }
-  getSessions = async () => {
-    const query = { query: sessionSummariesQuery(this.state.endCursor) };
-    const results = await this.props.client.query(query);
-    const { totalCount, pageInfo } = results.data.project.sessionData.sessionSummaries;
-    this.setState({
-      endCursor: pageInfo.endCursor || '',
-      totalCount,
-    });
-    return get(results.data, 'project.sessionData.sessionSummaries.resources', []);
-  }
-  getSessionsInfo = async () => {
-    const sessionIds = map(await this.getSessions(this.state.endCursor), (session) => `"${session.sessionId}"`);
-    const query = { query: sessionQuery(sessionIds) };
-    const results = await this.props.client.query(query);
-    const sessionsInfo = get(results.data, 'project.sessionData.sessions.resources', []);
-    this.setState({
-      sessionsInfo: this.state.sessionsInfo.concat(sessionsInfo),
-    });
-  }
-  
-  async componentDidMount() {
-    await this.getSessionsInfo();
-    this.setState({ loading: false });
-  }
-  render() {
-    const { sessionsInfo, loading } = this.state;
-    if (loading) return <Loading />;
-    if (sessionsInfo.length === 0) return <NoResultsFound />;
-    const handleNext = async () => {
-      this.setState({ loadingMore: true });
-      await this.getSessionsInfo();
-      this.setState({ loadingMore: false });
-    }
-    return (
-      <Paper>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell align="center">Session ID</TableCell>
-              <TableCell align="center">Meetings</TableCell>
-              <TableCell align="center">Publisher Minutes</TableCell>
-              <TableCell align="center">Subscriber Minutes</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            { this.state.sessionsInfo.map(({sessionId, meetings, publisherMinutes, subscriberMinutes}) => (
-              <TableRow key={sessionId}>
-                <TableCell component="th" scope="row">{sessionId}</TableCell>
-                <TableCell align="right" scope="row">{meetings.totalCount}</TableCell>
-                <TableCell align="right" scope="row">{round(publisherMinutes, 4)}</TableCell>
-                <TableCell align="right" scope="row">{round(subscriberMinutes, 4)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-          <TableFooter style={{ padding: "50px" }}>
-            <TableRow>
-              <TableCell>
-                Showing {sessionsInfo.length} of {this.state.totalCount} results.
+	constructor(props) {
+		super(props);
+		this.state = {
+			sessionsInfo: [],
+			loading: true,
+			loadingMore: false,
+			endCursor: '',
+			totalCount: 0,
+		}
+	}
+	getSessions = async () => {
+		const query = { query: sessionSummariesQuery(this.state.endCursor) };
+		const results = await this.props.client.query(query);
+		const { totalCount, pageInfo } = results.data.project.sessionData.sessionSummaries;
+		this.setState({
+			endCursor: pageInfo.endCursor || '',
+			totalCount,
+		});
+		return get(results.data, 'project.sessionData.sessionSummaries.resources', []);
+	}
+	getSessionsInfo = async () => {
+		const sessionIds = map(await this.getSessions(this.state.endCursor), (session) => `"${session.sessionId}"`);
+		if (!sessionIds.length) {
+			console.log('it\'s empty')
+			return;
+		}
+		const query = { query: sessionQuery(sessionIds) };
+		const results = await this.props.client.query(query);
+		const sessionsInfo = get(results.data, 'project.sessionData.sessions.resources', []);
+		this.setState({
+			sessionsInfo: this.state.sessionsInfo.concat(sessionsInfo),
+		});
+	}
+
+	async componentDidMount() {
+		await this.getSessionsInfo();
+		this.setState({ loading: false });
+	}
+	render() {
+		const { sessionsInfo, loading } = this.state;
+		if (loading) return <Loading />;
+		if (sessionsInfo.length === 0) return <NoResultsFound />;
+		const handleNext = async () => {
+			this.setState({ loadingMore: true });
+			await this.getSessionsInfo();
+			this.setState({ loadingMore: false });
+		}
+		return (
+			<Paper>
+				<Table>
+					<TableHead>
+						<TableRow>
+							<TableCell align="center">Session ID</TableCell>
+							<TableCell align="center">Meetings</TableCell>
+							<TableCell align="center">Publisher Minutes</TableCell>
+							<TableCell align="center">Subscriber Minutes</TableCell>
+						</TableRow>
+					</TableHead>
+					<TableBody>
+						{this.state.sessionsInfo.map(({ sessionId, meetings, publisherMinutes, subscriberMinutes }) => (
+							<TableRow key={sessionId}>
+								<TableCell component="th" scope="row">{sessionId}</TableCell>
+								<TableCell align="right" scope="row">{meetings.totalCount}</TableCell>
+								<TableCell align="right" scope="row">{round(publisherMinutes, 4)}</TableCell>
+								<TableCell align="right" scope="row">{round(subscriberMinutes, 4)}</TableCell>
+							</TableRow>
+						))}
+					</TableBody>
+					<TableFooter style={{ padding: "50px" }}>
+						<TableRow>
+							<TableCell>
+								Showing {sessionsInfo.length} of {this.state.totalCount} results.
                 <Link
-                  onClick={handleNext}
-                  size="small"
-                  color="primary"
-                  disabled={!this.state.endCursor || this.state.loadingMore}
-                >
-                  Retrieve more
+									onClick={handleNext}
+									size="small"
+									color="primary"
+									disabled={!this.state.endCursor || this.state.loadingMore}
+								>
+									Retrieve more
                 </Link>
-                {this.state.loadingMore &&
-                  <CircularProgress size="20px"/>
-                }
-              </TableCell>
-            </TableRow>
-          </TableFooter>
-        </Table>
-      </Paper>
-    );
-  }
+								{this.state.loadingMore &&
+									<CircularProgress size="20px" />
+								}
+							</TableCell>
+						</TableRow>
+					</TableFooter>
+				</Table>
+			</Paper>
+		);
+	}
 }
 
 export default withApollo(UsageBySession);
