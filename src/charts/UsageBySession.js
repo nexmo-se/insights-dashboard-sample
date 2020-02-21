@@ -85,7 +85,6 @@ class UsageBySession extends Component {
 	getSessionsInfo = async () => {
 		const sessionIds = map(await this.getSessions(this.state.endCursor), (session) => `"${session.sessionId}"`);
 		if (!sessionIds.length) {
-			console.log('it\'s empty')
 			return;
 		}
 		const query = { query: sessionQuery(sessionIds) };
