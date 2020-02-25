@@ -7,33 +7,37 @@ import SdkDistribution from './charts/SdkDistribution';
 import FailuresByBrowser from './charts/FailuresByBrowser';
 import BitrateByCountry from './charts/BitrateByCountry';
 import VideoStats from './charts/VideoStats';
+import FailuresByRegion from './charts/FailuresByRegion';
 import './css/App.css';
 
 class App extends Component {
-  render() {
-    return (
-      <div className="App">
-        <ChartContainer titleIcon="area" title="Usage by Day">
-          <UsageByDay />
-        </ChartContainer>
-        <ChartContainer titleIcon="pie" title="SDK Distribution">
-          <SdkDistribution />
-        </ChartContainer>
-        <ChartContainer titleIcon="bar" title="Failures by Browser">
-          <FailuresByBrowser />
-        </ChartContainer>
-        <ChartContainer titleIcon="bar" title="Bitrate by Country">
-          <BitrateByCountry />
-        </ChartContainer>
-        <ChartContainer titleIcon="area" title="Publisher Video Bitrate">
-          <VideoStats />
-        </ChartContainer>
-        <TableContainer titleIcon="table" title="Publisher and Subscriber minutes by Session">
-          <UsageBySession />
-        </TableContainer>
-      </div>
-    );
-  }
+	render() {
+		return (
+			<div className="App">
+				<ChartContainer titleIcon="area" title="Usage by Day">
+					<UsageByDay />
+				</ChartContainer>
+				<ChartContainer titleIcon="bar" title="Failures by Browser">
+					<FailuresByBrowser />
+				</ChartContainer>
+				<ChartContainer titleIcon="bar" title="Failures by Region">
+					<FailuresByRegion />
+				</ChartContainer>
+				<ChartContainer titleIcon="pie" title="SDK Distribution">
+					<SdkDistribution />
+				</ChartContainer>
+				<ChartContainer titleIcon="bar" title="Bitrate by Country">
+					<BitrateByCountry />
+				</ChartContainer>
+				<ChartContainer titleIcon="area" title="Publisher Video Bitrate">
+					<VideoStats />
+				</ChartContainer>
+				<TableContainer titleIcon="table" title="Publisher and Subscriber minutes by Session">
+					<UsageBySession />
+				</TableContainer>
+			</div>
+		);
+	}
 }
 
 export default App;

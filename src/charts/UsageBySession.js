@@ -5,6 +5,7 @@ import { get, map } from 'lodash';
 import moment from 'moment';
 import CircularProgress from '@material-ui/core/CircularProgress';
 import Link from '@material-ui/core/Button';
+import Grid from '@material-ui/core/Grid';
 import Table from '@material-ui/core/Table';
 import TableBody from '@material-ui/core/TableBody';
 import TableCell from '@material-ui/core/TableCell';
@@ -12,20 +13,25 @@ import TableFooter from '@material-ui/core/TableFooter';
 import TableHead from '@material-ui/core/TableHead';
 import TableRow from '@material-ui/core/TableRow';
 import Paper from '@material-ui/core/Paper';
+import {
+	MuiPickersUtilsProvider,
+	KeyboardDatePicker,
+} from '@material-ui/pickers';
 import Loading from '../components/Loading';
+import MomentUtils from '@date-io/moment';
 import NoResultsFound from '../components/NoResultsFound';
 import round from './helpers/round';
 
 const apiKey = process.env.REACT_APP_API_KEY;
 
 /* Get all session IDs from the last 10 days */
-const sessionSummariesQuery = endCursor => gql`
+const sessionSummariesQuery = (fromDate, toDate) => gql`
   {
     project(projectId: ${apiKey}) {
       sessionData {
         sessionSummaries(
-          start: ${moment().subtract(1, 'years')}
-          endCursor: "${endCursor}"
+			start: "${fromDate}",
+			end: "${toDate}"
         ) {
           totalCount
           pageInfo {
@@ -70,10 +76,12 @@ class UsageBySession extends Component {
 			loadingMore: false,
 			endCursor: '',
 			totalCount: 0,
+			fromDate: moment().subtract(10, 'days'),
+			toDate: moment(),
 		}
 	}
-	getSessions = async () => {
-		const query = { query: sessionSummariesQuery(this.state.endCursor) };
+	getSessions = async (from, to) => {
+		const query = { query: sessionSummariesQuery(from.toISOString(), to.toISOString()) };
 		const results = await this.props.client.query(query);
 		const { totalCount, pageInfo } = results.data.project.sessionData.sessionSummaries;
 		this.setState({
@@ -82,73 +90,122 @@ class UsageBySession extends Component {
 		});
 		return get(results.data, 'project.sessionData.sessionSummaries.resources', []);
 	}
-	getSessionsInfo = async () => {
-		const sessionIds = map(await this.getSessions(this.state.endCursor), (session) => `"${session.sessionId}"`);
-		if (!sessionIds.length) {
-			return;
+	getSessionsInfo = async (from, to) => {
+		const sessionIds = map(await this.getSessions(from, to), (session) => `"${session.sessionId}"`);
+		let sessionsInfo = [];
+		if (sessionIds.length) {
+			const query = { query: sessionQuery(sessionIds) };
+			const results = await this.props.client.query(query);
+			sessionsInfo = get(results.data, 'project.sessionData.sessions.resources', []);
 		}
-		const query = { query: sessionQuery(sessionIds) };
-		const results = await this.props.client.query(query);
-		const sessionsInfo = get(results.data, 'project.sessionData.sessions.resources', []);
+		console.log('getSessionsInfo', sessionsInfo)
 		this.setState({
-			sessionsInfo: this.state.sessionsInfo.concat(sessionsInfo),
+			sessionsInfo,
+			loading: false
 		});
 	}
 
+	handleFromDateChange = date => {
+		const { toDate } = this.state;
+		this.setState({ fromDate: date, loading: true });
+		this.getSessionsInfo(date, toDate);
+	};
+
+	handleToDateChange = date => {
+		const { fromDate } = this.state;
+		this.setState({ toDate: date, loading: true });
+		this.getSessionsInfo(fromDate, date);
+	};
+
 	async componentDidMount() {
-		await this.getSessionsInfo();
-		this.setState({ loading: false });
+		const { fromDate, toDate } = this.state;
+		await this.getSessionsInfo(fromDate, toDate);
 	}
 	render() {
-		const { sessionsInfo, loading } = this.state;
+		const { sessionsInfo, loading, fromDate, toDate } = this.state;
 		if (loading) return <Loading />;
-		if (sessionsInfo.length === 0) return <NoResultsFound />;
 		const handleNext = async () => {
 			this.setState({ loadingMore: true });
 			await this.getSessionsInfo();
 			this.setState({ loadingMore: false });
 		}
 		return (
-			<Paper>
-				<Table>
-					<TableHead>
-						<TableRow>
-							<TableCell align="center">Session ID</TableCell>
-							<TableCell align="center">Meetings</TableCell>
-							<TableCell align="center">Publisher Minutes</TableCell>
-							<TableCell align="center">Subscriber Minutes</TableCell>
-						</TableRow>
-					</TableHead>
-					<TableBody>
-						{this.state.sessionsInfo.map(({ sessionId, meetings, publisherMinutes, subscriberMinutes }) => (
-							<TableRow key={sessionId}>
-								<TableCell component="th" scope="row">{sessionId}</TableCell>
-								<TableCell align="right" scope="row">{meetings.totalCount}</TableCell>
-								<TableCell align="right" scope="row">{round(publisherMinutes, 4)}</TableCell>
-								<TableCell align="right" scope="row">{round(subscriberMinutes, 4)}</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-					<TableFooter style={{ padding: "50px" }}>
-						<TableRow>
-							<TableCell>
-								Showing {sessionsInfo.length} of {this.state.totalCount} results.
+			<>
+				<MuiPickersUtilsProvider utils={MomentUtils}>
+					<Grid container justify="space-around">
+						<KeyboardDatePicker
+							value={fromDate} onChange={this.handleFromDateChange}
+							disableFuture={true}
+							disableToolbar
+							variant="inline"
+							margin="normal"
+							label="From date"
+							KeyboardButtonProps={{
+								'aria-label': 'change date',
+							}}
+						/>
+						<KeyboardDatePicker
+							disableFuture={true}
+							disableToolbar
+							variant="inline"
+							margin="normal"
+							id="date-picker-inline"
+							label="To date"
+							value={toDate}
+							onChange={this.handleToDateChange}
+							KeyboardButtonProps={{
+								'aria-label': 'change date',
+							}}
+						/>
+					</Grid>
+				</MuiPickersUtilsProvider>
+				<Paper>
+					{sessionsInfo.length === 0 ? (<NoResultsFound />) :
+						(<>
+							<div>Total session: {sessionsInfo.length} </div>
+							<Table>
+								<TableHead>
+									<TableRow>
+										<TableCell align="center">Session ID</TableCell>
+										<TableCell align="center">Meetings</TableCell>
+										<TableCell align="center">Publisher Minutes</TableCell>
+										<TableCell align="center">Subscriber Minutes</TableCell>
+									</TableRow>
+								</TableHead >
+								<TableBody>
+									{this.state.sessionsInfo.map(({ sessionId, meetings, publisherMinutes, subscriberMinutes }) => (
+										<TableRow key={sessionId}>
+											<TableCell component="th" scope="row">{sessionId}</TableCell>
+											<TableCell align="right" scope="row">{meetings.totalCount}</TableCell>
+											<TableCell align="right" scope="row">{round(publisherMinutes, 4)}</TableCell>
+											<TableCell align="right" scope="row">{round(subscriberMinutes, 4)}</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+								<TableFooter style={{ padding: "50px" }}>
+									<TableRow>
+										<TableCell>
+											Showing {sessionsInfo.length} of {this.state.totalCount} results.
                 <Link
-									onClick={handleNext}
-									size="small"
-									color="primary"
-									disabled={!this.state.endCursor || this.state.loadingMore}
-								>
-									Retrieve more
+												onClick={handleNext}
+												size="small"
+												color="primary"
+												disabled={!this.state.endCursor || this.state.loadingMore}
+											>
+												Retrieve more
                 </Link>
-								{this.state.loadingMore &&
-									<CircularProgress size="20px" />
-								}
-							</TableCell>
-						</TableRow>
-					</TableFooter>
-				</Table>
-			</Paper>
+											{this.state.loadingMore &&
+												<CircularProgress size="20px" />
+											}
+										</TableCell>
+									</TableRow>
+								</TableFooter>
+							</Table >
+						</>)
+					}
+
+				</Paper>
+			</>
 		);
 	}
 }
