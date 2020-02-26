@@ -98,7 +98,6 @@ class UsageBySession extends Component {
 			const results = await this.props.client.query(query);
 			sessionsInfo = get(results.data, 'project.sessionData.sessions.resources', []);
 		}
-		console.log('getSessionsInfo', sessionsInfo)
 		this.setState({
 			sessionsInfo,
 			loading: false

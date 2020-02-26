@@ -5,7 +5,12 @@ import {
 	MuiPickersUtilsProvider,
 	KeyboardDatePicker,
 } from '@material-ui/pickers';
+import FormControl from '@material-ui/core/FormControl';
+import InputLabel from '@material-ui/core/InputLabel';
+import Select from '@material-ui/core/Select';
 import MomentUtils from '@date-io/moment';
+import MenuItem from '@material-ui/core/MenuItem';
+import FormHelperText from '@material-ui/core/FormHelperText';
 import gql from 'graphql-tag';
 import { Bar } from 'react-chartjs-2';
 import { get } from 'lodash';
@@ -13,19 +18,19 @@ import moment from 'moment';
 import Loading from '../components/Loading';
 
 const apiKey = process.env.REACT_APP_API_KEY;
+const countries = ['SA', 'EG', 'US', 'IN', 'GB'];
+
 const browsersQuery = (fromDate, toDate) => gql`
   {
     project(projectId: ${apiKey}) {
       projectData(
 		start: "${fromDate}",
 		end: "${toDate}",
-        groupBy: [COUNTRY, BROWSER],
-        country: [SA, EG, US, IN, GB],
-        browser: [CHROME, FIREFOX, IE, EDGE,SAFARI, OTHER ]
+        groupBy: [COUNTRY],
+        country: [SA, EG, US, IN, GB]
       ) { 
         resources {
           country,
-          browser,
           errors {
             connect {
               failures
@@ -34,6 +39,38 @@ const browsersQuery = (fromDate, toDate) => gql`
               failures
             },
             subscribe {
+              failures
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const browsersRegionQuery = (fromDate, toDate, country) => gql`
+  {
+    project(projectId: ${apiKey}) {
+      projectData(
+		start: "${fromDate}",
+		end: "${toDate}",
+        groupBy: [COUNTRY, BROWSER]
+		browser: [CHROME, FIREFOX, IE, EDGE,SAFARI, OTHER],
+		country: ${country}
+      ) { 
+        resources {
+          browser,
+          errors {
+            connect {
+			  attempts
+              failures
+            },
+            publish {
+			  attempts
+              failures
+            },
+            subscribe {
+			  attempts
               failures
             }
           }
@@ -52,19 +89,30 @@ class FailuresByRegion extends Component {
 			toDate: moment(),
 			regionsChartData: [],
 			loading: true,
+			countries: [],
+			currentCountry: 'None'
 		}
 	}
 
 	handleFromDateChange = date => {
-		const { toDate } = this.state;
+		const { toDate, currentCountry } = this.state;
 		this.setState({ fromDate: date, loading: true });
-		this.updateChartsResult(date, toDate);
+		this.updateChartsResult(date, toDate, currentCountry);
 	};
 
 	handleToDateChange = date => {
-		const { fromDate } = this.state;
+		const { fromDate, currentCountry } = this.state;
 		this.setState({ toDate: date, loading: true });
-		this.updateChartsResult(fromDate, date);
+		this.updateChartsResult(fromDate, date, currentCountry);
+	};
+
+	handleOnChangeCountry = event => {
+		const { fromDate, toDate } = this.state;
+		const country = event.target.value;
+		console.log('handleOnChangeCountry', event.target.value)
+		this.updateChartsResult(fromDate, toDate, country);
+		this.setState({ loading: true, currentCountry: country });
+
 	};
 
 	getBrowsersResult = async (from, to) => {
@@ -73,21 +121,32 @@ class FailuresByRegion extends Component {
 		return get(results.data, 'project.projectData.resources', []);
 	}
 
-	updateChartsResult = async (fromDate, toDate) => {
-		const regionsChartData = await this.getBrowsersResult(fromDate, toDate);
+	getBrowsersRegionResult = async (from, to, country) => {
+		const query = { query: browsersRegionQuery(from.toISOString(), to.toISOString(), country) };
+		const results = await this.props.client.query(query);
+		return get(results.data, 'project.projectData.resources', []);
+	}
+
+	updateChartsResult = async (fromDate, toDate, country) => {
+		let regionsChartData = null;
+		if (country === 'None') {
+			regionsChartData = await this.getBrowsersResult(fromDate, toDate);
+		} else {
+			regionsChartData = await this.getBrowsersRegionResult(fromDate, toDate, country);
+		}
 		this.setState({
 			regionsChartData,
-			loading: false
+			loading: false,
 		});
 	}
 
 	async componentDidMount() {
-		const { fromDate, toDate } = this.state;
-		this.updateChartsResult(fromDate, toDate);
+		const { fromDate, toDate, currentCountry } = this.state;
+		this.updateChartsResult(fromDate, toDate, currentCountry);
 	}
 
 	render() {
-		const { fromDate, toDate, regionsChartData, loading } = this.state;
+		const { fromDate, toDate, regionsChartData, loading, currentCountry } = this.state;
 		if (loading) return <Loading />;
 		const barChartOptions = {
 			legend: {
@@ -97,11 +156,69 @@ class FailuresByRegion extends Component {
 				xAxes: [{ stacked: true }], yAxes: [{ stacked: true }],
 			}
 		};
-		/* const dataset = regionsChartData.map(item => {
-			return {
-				// todo map is not the right function
-			}
-		}); */
+		let labels = [];
+		let datasets = [];
+		if (currentCountry === 'None') {
+			labels = regionsChartData.map(item => item.country);
+			datasets = [{
+				label: 'Connect Failures',
+				backgroundColor: '#F25F5C',
+				data: regionsChartData.map(item => get(item, 'errors.connect.failures', 0)),
+				stack: '1'
+			},
+			{
+				label: 'Publish Failures',
+				backgroundColor: '#F25F5C',
+				data: regionsChartData.map(item => get(item, 'errors.publish.failures', 0)),
+				stack: '1'
+			},
+			{
+				label: 'Subscribe Failures',
+				backgroundColor: '#F25F5C',
+				data: regionsChartData.map(item => get(item, 'errors.subscribe.failures', 0)),
+				stack: '1'
+			}];
+		} else {
+			labels = regionsChartData.map(item => item.browser);
+			datasets = [
+				{
+					label: 'Connect Attempts',
+					backgroundColor: '#224870',
+					data: regionsChartData.map(item => get(item, 'errors.connect.attempts', 0)),
+					stack: '1'
+				},
+				{
+					label: 'Connect Failures',
+					backgroundColor: '#F25F5C',
+					data: regionsChartData.map(item => get(item, 'errors.connect.failures', 0)),
+					stack: '1'
+				},
+				{
+					label: 'Publish Attempts',
+					backgroundColor: '#44CFCB',
+					data: regionsChartData.map(item => get(item, 'errors.publish.attempts', 0)),
+					stack: '2'
+				},
+				{
+					label: 'Publish Failures',
+					backgroundColor: '#F25F5C',
+					data: regionsChartData.map(item => get(item, 'errors.publish.failures', 0)),
+					stack: '2'
+				},
+				{
+					label: 'Subscribe Attempts',
+					backgroundColor: '#247BA0',
+					data: regionsChartData.map(item => get(item, 'errors.subscribe.attempts', 0)),
+					stack: '3'
+				},
+				{
+					label: 'Subscribe Failures',
+					backgroundColor: '#F25F5C',
+					data: regionsChartData.map(item => get(item, 'errors.subscribe.failures', 0)),
+					stack: '3'
+				}
+			];
+		}
 		return (
 			<>
 				<MuiPickersUtilsProvider utils={MomentUtils}>
@@ -132,16 +249,30 @@ class FailuresByRegion extends Component {
 						/>
 					</Grid>
 				</MuiPickersUtilsProvider>
+				<FormControl>
+					<InputLabel id="demo-simple-select-helper-label">Countries</InputLabel>
+					<Select
+						labelId="demo-simple-select-helper-label"
+						id="demo-simple-select-helper"
+						value={currentCountry}
+						onChange={this.handleOnChangeCountry}
+					>
+						<MenuItem value="None">
+							<em>None</em>
+						</MenuItem>
+						{countries.map(item =>
+							<MenuItem value={item} key={item}>
+								<em>{item}</em>
+							</MenuItem>
+						)}
+					</Select>
+				</FormControl>
 				<Bar data={{
-					labels: regionsChartData.map(item => item.country),
+					/* labels: regionsChartData.map(item => item.country), */
+					labels,
+					datasets
 					// Iterate over browsers label
-					datasets: [
-						{
-							label: 'Connect Failures',
-							backgroundColor: '#F25F5C',
-							data: regionsChartData.map(item => get(item, 'errors.connect.failures', 0)),
-							stack: '1'
-						},
+					/* datasets: [
 						{
 							label: 'Connect Failures',
 							backgroundColor: '#F25F5C',
@@ -152,15 +283,15 @@ class FailuresByRegion extends Component {
 							label: 'Publish Failures',
 							backgroundColor: '#F25F5C',
 							data: regionsChartData.map(item => get(item, 'errors.publish.failures', 0)),
-							stack: '2'
+							stack: '1'
 						},
 						{
 							label: 'Subscribe Failures',
 							backgroundColor: '#F25F5C',
 							data: regionsChartData.map(item => get(item, 'errors.subscribe.failures', 0)),
-							stack: '3'
+							stack: '1'
 						}
-					],
+					], */
 				}}
 					options={barChartOptions}
 				/>
